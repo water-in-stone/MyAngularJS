@@ -1,0 +1,4 @@
+node_modules/
+.idea/
+myangular.js
+myangular.min.js

@@ -1,2 +1,2 @@
-# myangular
+# MyAngularJS
 Build my own AngularJS based on 《Build Your Own AngularJS》
