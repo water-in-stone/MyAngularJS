@@ -1096,4 +1096,5 @@ describe('inheritance', function() {
   });
 
 
+
 });
