@@ -4,6 +4,15 @@ var _ = require('lodash');
 
 function initWatchVal() {}
 
+function isArrayLike(obj) {
+  if (_.isNull(obj) || _.isUndefined(obj)) {
+    return false;
+  }
+  var length = obj.length;
+  return length === 0 ||
+    (_.isNumber(length) && length > 0 && (length - 1) in obj);
+}
+
 function Scope() {
   this.$$watchers = [];
   this.$$lastDirtyWatch = null;
@@ -35,6 +44,92 @@ Scope.prototype.$watch = function(watchFn, listenerFn, valueEq) {
       self.$root.$$lastDirtyWatch = null;
     }
   };
+};
+
+Scope.prototype.$watchCollection = function(watchFn, listenerFn) {
+  var self = this;
+  var newValue;
+  var oldValue;
+  var oldLength;
+  var veryOldValue;
+  var trackVeryOldValue = listenerFn.length > 1;
+  var changeCount = 0;
+  var firstRun = true;
+
+  var internalWatchFn = function(scope) {
+    var newLength;
+    newValue = watchFn(scope);
+    if (_.isObject(newValue)) {
+      if (isArrayLike(newValue)) { //consider some array-like obeject, such as NodeList or arguments
+        if (!_.isArray(oldValue)) {
+          changeCount++;
+          oldValue = [];
+        }
+        if (newValue.length !== oldValue.length) {
+          changeCount++;
+          oldValue.length = newValue.length;
+        }
+        _.forEach(newValue, function(newItem, i) {
+          var bothNaN = _.isNaN(newItem) && _.isNaN(oldValue[i]); //judge NaN
+          if (!bothNaN && oldValue[i] !== newItem) {
+            oldValue[i] = newItem;
+            changeCount++;
+          }
+        });
+      } else {
+        newLength = 0;
+        if (!_.isObject(oldValue) || isArrayLike(oldValue)) {
+          changeCount++;
+          oldValue = {};
+          oldLength = 0;
+        }
+        _.forOwn(newValue, function(newVal, key) {
+          newLength++;
+          if (oldValue.hasOwnProperty(key)) {
+            var bothNaN = _.isNaN(newVal) && _.isNaN(oldValue[key]);
+            if (!bothNaN && oldValue[key] !== newVal) { // 判断是否改变了对象的某一个属性值
+              changeCount++;
+              oldValue[key] = newVal;
+            }
+          } else {
+            changeCount++; //表明对象中添加了属性值
+            oldLength++;
+            oldValue[key] = newVal;
+          }
+        });
+        if (oldLength > newLength) { //这代表对象中有属性被移除了
+          changeCount++;
+          _.forOwn(oldValue, function(oldVal, key) { //detect deleting attribute of object
+            if (!newValue.hasOwnProperty(key)) {
+              oldLength--;
+              delete oldValue[key];
+            }
+          });
+        }
+      }
+    } else {
+      if (!self.$areEqual(newValue, oldValue, false)) {
+        changeCount++;
+      }
+      oldValue = newValue;
+    }
+    return changeCount;
+  };
+
+  var internalListernerFn = function() {
+    if (firstRun) {
+      listenerFn(newValue, newValue, self);
+      firstRun = false;
+    } else {
+      listenerFn(newValue, veryOldValue, self);
+    }
+
+    if (trackVeryOldValue) {
+      veryOldValue = _.clone(newValue);
+    }
+  };
+
+  return self.$watch(internalWatchFn, internalListernerFn);
 };
 
 Scope.prototype.$watchGroup = function(watchFns, listenerFn) {
